@@ -127,9 +127,11 @@ acc_ftp={}
 acc_chrm={}
 acc_gcf={}
 
+
 operontsvIn=open(args.operontsv, 'r').read().rstrip()
 splittedOTsv=operontsvIn.split("\n\n")
 positionDict={}
+strandDict={}
 count=set()
 for item in splittedOTsv:
 	if item!='':
@@ -141,34 +143,39 @@ for item in splittedOTsv:
 		for items in item.split('\n'):
 			accs=items.split('\t')[0].split('|')[0]#+'_'+items.split('\t')[0].split('_')[1]
 			acc_sp[accs]=items.split('\t')[0].split('|')[1]
-			if items.split('\t')[11] in accnr_list_dict:
+			if items.split('\t')[11] in accnr_list_dict: #if gcf in accnr_list_dict
 				#print(items.split('\t')[11], accnr_list_dict[items.split('\t')[11]])
-				acc_ftp[accs]=accnr_list_dict[items.split('\t')[11]].split('\t')[1]
+				acc_ftp[accs]=accnr_list_dict[items.split('\t')[11]].split('\t')[1] #ftp link
+				acc_chrm[accs]=items.split('\t')[10]
+				acc_gcf[accs]=items.split('\t')[11]
+				startP=int(items.split('\t')[7])
+				endP=int(items.split('\t')[8])
+				fgenes=items.split('\t')[9]
+				fgenesList.append(fgenes)
+				queryaccName=items.split('\t')[0].split('|')[0]
+				strandOrder=items.split('\t')[2]
+				start.append(startP)
+				end.append(endP)
 			else:
 				count.add(items.split('\t')[11])
 				acc_ftp[accs]='not_found'
-			acc_chrm[accs]=items.split('\t')[10]
-			acc_gcf[accs]=items.split('\t')[11]
-			startP=int(items.split('\t')[7])
-			endP=int(items.split('\t')[8])
-			fgenes=items.split('\t')[9]
-			fgenesList.append(fgenes)
-			queryaccName=items.split('\t')[0].split('|')[0]
-			strandOrder=items.split('\t')[2]
-			start.append(startP)
-			end.append(endP)
+
 		#if strandOrder=='+':
-		if args.position:
-			positionDict[accs]=str(start[fgenesList.index(queryaccName)]-int(args.position))+'\t'+str(start[fgenesList.index(queryaccName)]-1)
-		else:
+		#print(accs, start, end)
+		#print(accs,fgenesList, start, end)
+		if fgenesList:
 			if strandOrder=='+':
-				if len(end)>fgenesList.index(queryaccName)-1:
+				#print(accs, len(end), fgenesList.index(queryaccName)+1, fgenesList, queryaccName)
+				if fgenesList.index(queryaccName)!=0:
 				#if end[fgenesList.index(queryaccName)-1]:
-					positionDict[accs]=str(end[fgenesList.index(queryaccName)-1])+'\t'+str(start[fgenesList.index(queryaccName)]-1)
+					positionDict[accs]=str(end[fgenesList.index(queryaccName)-1]+1)+'\t'+str(start[fgenesList.index(queryaccName)]-1)
+					strandDict[accs]='+'
 			if strandOrder=='-':
-				if len(end)>fgenesList.index(queryaccName)+1:
+				#print(accs, len(end), fgenesList.index(queryaccName), fgenesList, queryaccName)
+				if fgenesList.index(queryaccName)!=0:
 				#if end[fgenesList.index(queryaccName)+1]:
-					positionDict[accs]=str(end[fgenesList.index(queryaccName)+1])+'\t'+str(start[fgenesList.index(queryaccName)]-1)
+					positionDict[accs]=str(end[fgenesList.index(queryaccName)]+1)+'\t'+str(start[fgenesList.index(queryaccName)-1]-1)
+					strandDict[accs]='-'
 		#if strandOrder=='-': #[2223371:2223829]
 			#positionDict[accs]=str(end[fgenesList.index(queryaccName)])+'\t'+str(start[fgenesList.index(queryaccName)-1]-1)
 
@@ -180,13 +187,25 @@ print('Not found = '+ str(len(count)))
 #print(acc_gcf) #'WP_089251833.1#7': 'GCF_900188125.1'
 #print(positionDict) #'WP_089251833.1#7': '27226\t35524'
 
+def revComp(sp, seqs):
+	if sp=='+':
+		return seqs
+	if sp=='-':
+		if 'U' not in seqs:
+			complementSeq=seqs[::-1]
+			revcomplementSeq=complementSeq.translate(str.maketrans('ATGC','TACG'))              # reverse complementery sequence for ACGT
+			return revcomplementSeq
+		elif 'T' not in seqs:
+			complementSeq=seqDict[seqid][::-1]
+			revcomplementSeq=complementSeq.translate(str.maketrans('AUGC','UACG'))              # reverse complementery sequence for ACGU
+			return revcomplementSeq
 #import sys
 #sys.exit()
 seqDict={}
 spDict={}
 for acc in acc_ftp:
 	if acc_ftp[acc]!='not_found':
-		print(acc)
+		#print(acc)
 		ftpLine=acc_ftp[acc]
 		print(ftpLine)
 		ftpsplitDir = ftpLine.split('/')[3:]
@@ -207,7 +226,7 @@ for acc in acc_ftp:
 						if item.split(' ')[0]==acc_chrm[acc]:
 							#print(item.split('\n')[0])
 							seqId=item.split(' ')[0]
-							print(seqId)
+							#print(seqId)
 							#spInfo='_'+item+'_'+accnr_list_dict[item].split('\t')[0]
 							#print(spInfo)
 							sequence=('').join(item.split('\n')[1:])
@@ -234,12 +253,13 @@ with open(args.out_prefix+'_upstreamIntergenic.txt', 'w') as ftab:
 			if acc in positionDict:
 				fromPos=str(positionDict[acc].split('\t')[0])
 				toPos=str(positionDict[acc].split('\t')[1])
+				strandPos=strandDict[acc]
 				if int(fromPos)>0 and int(toPos)>0:
 					if acc_chrm[acc] in seqDict:
 						if int(fromPos)<len(seqDict[acc_chrm[acc]])+1 and int(toPos)<len(seqDict[acc_chrm[acc]])+1 and int(fromPos)<int(toPos):
 							print('>'+str(args.out_prefix)+'_'+acc_chrm[acc]+'_'+acc+'_'+acc_sp[acc]+'_'+acc_gcf[acc]\
 							+';length='+str(len(seqDict[acc_chrm[acc]][int(fromPos)-1:int(toPos)]))+'/'+str(len(seqDict[acc_chrm[acc]]))+\
-							'['+fromPos+':'+toPos+']'+'\n'+seqDict[acc_chrm[acc]][int(fromPos)-1:int(toPos)],file=ftab)
+							'['+fromPos+':'+toPos+']'+'\n'+revComp(strandPos, seqDict[acc_chrm[acc]][int(fromPos)-1:int(toPos)]),file=ftab)
 						else:
 							pass
 					else:
@@ -253,15 +273,24 @@ with open(args.out_prefix+'_upstreamIntergenic.txt', 'w') as ftab:
 
 if (glob.glob(args.out_prefix+'_upstreamIntergenic.txt')):
 	fasIn=open(args.out_prefix+'_upstreamIntergenic.txt', 'r').read().rstrip().split('>')
-	with open(args.out_prefix+'_upstreamIntergenic.fasta', 'w') as fileOut:
-		for items in fasIn:
-			if items!='':
-				fastaID='>'+items.split('\n')[0]
-				sequence=textwrap.fill(items.split('\n')[1],80)
-				print(fastaID,sequence,sep='\n', file=fileOut)
+	if args.position:
+		with open(args.out_prefix+'_upstream'+str(args.position)+'_Intergenic.fasta', 'w') as fileOut:
+			for items in fasIn:
+				if items!='':
+					fastaID='>'+items.split('\n')[0].split(';')[0]+';length='+args.position+'/'+items.split('\n')[0].split(';')[1].split('/')[1].split('[')[0]
+					sequence=textwrap.fill(items.split('\n')[1][(int(args.position)+1*-1):],80)
+					#print(len(items.split('\n')[1][(int(args.position)*-1):]))
+					print(fastaID,sequence,sep='\n', file=fileOut)
+	if not args.position:
+		with open(args.out_prefix+'_upstreamIntergenic.fasta', 'w') as fileOut:
+			for items in fasIn:
+				if items!='':
+					fastaID='>'+items.split('\n')[0]
+					sequence=textwrap.fill(items.split('\n')[1],80)
+					print(fastaID,sequence,sep='\n', file=fileOut)
 
 if (glob.glob(args.out_prefix+'_upstreamIntergenic.fasta')):
 	subprocess.Popen("rm %s"%(args.out_prefix+'_upstreamIntergenic.txt'), shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-print('Check your output file: '+args.out_prefix+'_upstreamIntergenic.fasta')
+print('\n\nCompleted!\n')
 sys.exit()
