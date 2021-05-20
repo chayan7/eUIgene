@@ -28,10 +28,11 @@ usage= ''' Description:  Get intergenic regions between query gene and upstream 
 
 parser = argparse.ArgumentParser(description=usage)
 parser.add_argument("-ot", "--operontsv", help="Operon tsv file")
-parser.add_argument("-p", "--position", help="300 or 700, default ntds between preceding gene end to query gene start")
+parser.add_argument("-sp", "--sposition", help="300 or 700, Upstream is extracted based on the position input, but within the same contig, even if it encroaches in upstream genes. Default is intergenic nucleotides between preceding gene end to query gene start")
+parser.add_argument("-ip", "--iposition", help="300 or 700, Upstream is extracted only from the intergenic region. Default is intergenic nucleotides between preceding gene end to query gene start")
 parser.add_argument("-o", "--out_prefix", required= True, help="Any Keyword to define your output eg. MyQuery")
 parser.add_argument("-k", "--keep", action="store_true", help="If you want to keep the intermediate files eg. gff3 use [-k]. By default it will remove.")
-parser.add_argument("-v", "--version", action="version", version='%(prog)s 1.0.2')
+parser.add_argument("-v", "--version", action="version", version='%(prog)s 1.0.1')
 
 
 args = parser.parse_args()
@@ -163,21 +164,31 @@ for item in splittedOTsv:
 		#if strandOrder=='+':
 		#print(accs, start, end)
 		#print(accs,fgenesList, start, end)
-		if fgenesList:
-			if strandOrder=='+':
-				#print(accs, len(end), fgenesList.index(queryaccName)+1, fgenesList, queryaccName)
+		if args.sposition:
+			if fgenesList:
 				if fgenesList.index(queryaccName)!=0:
-				#if end[fgenesList.index(queryaccName)-1]:
-					positionDict[accs]=str(end[fgenesList.index(queryaccName)-1]+1)+'\t'+str(start[fgenesList.index(queryaccName)]-1)
-					strandDict[accs]='+'
-			if strandOrder=='-':
-				#print(accs, len(end), fgenesList.index(queryaccName), fgenesList, queryaccName)
-				if fgenesList.index(queryaccName)!=0:
-				#if end[fgenesList.index(queryaccName)+1]:
-					positionDict[accs]=str(end[fgenesList.index(queryaccName)]+1)+'\t'+str(start[fgenesList.index(queryaccName)-1]-1)
-					strandDict[accs]='-'
-		#if strandOrder=='-': #[2223371:2223829]
-			#positionDict[accs]=str(end[fgenesList.index(queryaccName)])+'\t'+str(start[fgenesList.index(queryaccName)-1]-1)
+					if strandOrder=='+':
+						positionDict[accs]=str(start[fgenesList.index(queryaccName)]-int(args.sposition))+'\t'+str(start[fgenesList.index(queryaccName)]-1)
+						strandDict[accs]='+'
+					if strandOrder=='-':
+						positionDict[accs]=str(end[fgenesList.index(queryaccName)]+1)+'\t'+str(end[fgenesList.index(queryaccName)]+int(args.sposition))
+						strandDict[accs]='-'
+		else:
+			if fgenesList:
+				if strandOrder=='+':
+					#print(accs, len(end), fgenesList.index(queryaccName)+1, fgenesList, queryaccName)
+					if fgenesList.index(queryaccName)!=0:
+					#if end[fgenesList.index(queryaccName)-1]:
+						positionDict[accs]=str(end[fgenesList.index(queryaccName)-1]+1)+'\t'+str(start[fgenesList.index(queryaccName)]-1)
+						strandDict[accs]='+'
+				if strandOrder=='-':
+					#print(accs, len(end), fgenesList.index(queryaccName), fgenesList, queryaccName)
+					if fgenesList.index(queryaccName)!=0:
+					#if end[fgenesList.index(queryaccName)+1]:
+						positionDict[accs]=str(end[fgenesList.index(queryaccName)]+1)+'\t'+str(start[fgenesList.index(queryaccName)-1]-1)
+						strandDict[accs]='-'
+			#if strandOrder=='-': #[2223371:2223829]
+				#positionDict[accs]=str(end[fgenesList.index(queryaccName)])+'\t'+str(start[fgenesList.index(queryaccName)-1]-1)
 
 print('Not found = '+ str(len(count)))
 
@@ -205,45 +216,66 @@ seqDict={}
 spDict={}
 for acc in acc_ftp:
 	if acc_ftp[acc]!='not_found':
-		#print(acc)
-		ftpLine=acc_ftp[acc]
-		print(ftpLine)
-		ftpsplitDir = ftpLine.split('/')[3:]
-		ftp_path = '/'.join(map(str,ftpsplitDir))
-		ftp = ftplib.FTP('ftp.ncbi.nih.gov', 'anonymous', 'anonymous@ftp.ncbi.nih.gov')
-		ftp.cwd('/'+ftp_path)
-		files = ftp.nlst()
-		for elements in files:
-			if ftpsplitDir[-1]+'_genomic.fna.gz' in elements:
-				#print(elements) #Check if GFF.gz is there
-				#try:
-				ftp.retrbinary('RETR ' + elements, open(acc_gcf[acc]+'.gfna.gz', 'wb').write)
-				print('Download complete: '+elements)
-				Line=gzip.open(acc_gcf[acc]+'.gfna.gz', 'rb').read().decode('utf-8').split('>') #Download and read gff.gz
-				if Line:
-					for item in Line:
-						#print(item.split(' ')[0])
-						if item.split(' ')[0]==acc_chrm[acc]:
-							#print(item.split('\n')[0])
-							seqId=item.split(' ')[0]
-							#print(seqId)
-							#spInfo='_'+item+'_'+accnr_list_dict[item].split('\t')[0]
-							#print(spInfo)
-							sequence=('').join(item.split('\n')[1:])
-							seqDict[seqId]=sequence
-							#spDict[seqId]=spInfo
-						else:
-							pass
-				else:
-					pass
+		if os.path.isfile(acc_gcf[acc]+'.gfna.gz'):
+			Line=gzip.open(acc_gcf[acc]+'.gfna.gz', 'rb').read().decode('utf-8').split('>') #Download and read gff.gz
+			if Line:
+				for item in Line:
+					#print(item.split(' ')[0])
+					if item.split(' ')[0]==acc_chrm[acc]:
+						#print(item.split('\n')[0])
+						seqId=item.split(' ')[0]
+						#print(seqId)
+						#spInfo='_'+item+'_'+accnr_list_dict[item].split('\t')[0]
+						#print(spInfo)
+						sequence=('').join(item.split('\n')[1:])
+						seqDict[seqId]=sequence
+						#spDict[seqId]=spInfo
+					else:
+						pass
 			else:
 				pass
+		if not os.path.isfile(acc_gcf[acc]+'.gfna.gz'):
+			ftpLine=acc_ftp[acc]
+			print(ftpLine)
+			ftpsplitDir = ftpLine.split('/')[3:]
+			ftp_path = '/'.join(map(str,ftpsplitDir))
+			ftp = ftplib.FTP('ftp.ncbi.nih.gov', 'anonymous', 'anonymous@ftp.ncbi.nih.gov')
+			ftp.cwd('/'+ftp_path)
+			files = ftp.nlst()
+			for elements in files:
+				if ftpsplitDir[-1]+'_genomic.fna.gz' in elements:
+					#print(elements) #Check if GFF.gz is there
+					#try:
+					ftp.retrbinary('RETR ' + elements, open(acc_gcf[acc]+'.gfna.gz', 'wb').write)
+					print('Download complete: '+elements)
+					Line=gzip.open(acc_gcf[acc]+'.gfna.gz', 'rb').read().decode('utf-8').split('>') #Download and read gff.gz
+					if Line:
+						for item in Line:
+							#print(item.split(' ')[0])
+							if item.split(' ')[0]==acc_chrm[acc]:
+								#print(item.split('\n')[0])
+								seqId=item.split(' ')[0]
+								#print(seqId)
+								#spInfo='_'+item+'_'+accnr_list_dict[item].split('\t')[0]
+								#print(spInfo)
+								sequence=('').join(item.split('\n')[1:])
+								seqDict[seqId]=sequence
+								#spDict[seqId]=spInfo
+							else:
+								pass
+					else:
+						pass
+				else:
+					pass
+	else:
+		pass
 
 
 
 if args.keep:
 	pass
 else:
+	subprocess.Popen("rm *.db", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 	subprocess.Popen("rm G*F*.gz", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -261,7 +293,12 @@ with open(args.out_prefix+'_upstreamIntergenic.txt', 'w') as ftab:
 							+';length='+str(len(seqDict[acc_chrm[acc]][int(fromPos)-1:int(toPos)]))+'/'+str(len(seqDict[acc_chrm[acc]]))+\
 							'['+fromPos+':'+toPos+']'+'\n'+revComp(strandPos, seqDict[acc_chrm[acc]][int(fromPos)-1:int(toPos)]),file=ftab)
 						else:
-							pass
+							if int(fromPos)<len(seqDict[acc_chrm[acc]])+1 and int(fromPos)<int(toPos):
+								if not int(toPos)<len(seqDict[acc_chrm[acc]])+1:
+									print('>'+str(args.out_prefix)+'_'+acc_chrm[acc]+'_'+acc+'_'+acc_sp[acc]+'_'+acc_gcf[acc]\
+									+';length(adj)='+str(len(seqDict[acc_chrm[acc]][int(fromPos)-1:]))+'/'+str(len(seqDict[acc_chrm[acc]]))+\
+									'['+fromPos+':'+toPos+']'+'\n'+revComp(strandPos, seqDict[acc_chrm[acc]][int(fromPos)-1:]),file=ftab)
+
 					else:
 						pass
 				else:
@@ -273,15 +310,20 @@ with open(args.out_prefix+'_upstreamIntergenic.txt', 'w') as ftab:
 
 if (glob.glob(args.out_prefix+'_upstreamIntergenic.txt')):
 	fasIn=open(args.out_prefix+'_upstreamIntergenic.txt', 'r').read().rstrip().split('>')
-	if args.position:
-		with open(args.out_prefix+'_upstream'+str(args.position)+'_Intergenic.fasta', 'w') as fileOut:
+	if args.iposition:
+		with open(args.out_prefix+'_upstreamIntergenic.fasta', 'w') as fileOut:
 			for items in fasIn:
 				if items!='':
-					fastaID='>'+items.split('\n')[0].split(';')[0]+';length='+args.position+'/'+items.split('\n')[0].split(';')[1].split('/')[1].split('[')[0]
-					sequence=textwrap.fill(items.split('\n')[1][(int(args.position)+1*-1):],80)
-					#print(len(items.split('\n')[1][(int(args.position)*-1):]))
-					print(fastaID,sequence,sep='\n', file=fileOut)
-	if not args.position:
+					if len(items.split('\n')[1])>=int(args.iposition):
+						fastaID='>'+items.split('\n')[0].split(';')[0]+';length='+args.iposition
+						sequence=textwrap.fill(items.split('\n')[1][(int(args.iposition)+1*-1):],80)
+						print(fastaID,sequence,sep='\n', file=fileOut)
+					else:
+						fastaID='>'+items.split('\n')[0].split(';')[0]+';length='+str(len(items.split('\n')[1]))
+						sequence=textwrap.fill(items.split('\n')[1],80)
+						print(fastaID,sequence,sep='\n', file=fileOut)
+
+	if not args.iposition:
 		with open(args.out_prefix+'_upstreamIntergenic.fasta', 'w') as fileOut:
 			for items in fasIn:
 				if items!='':
